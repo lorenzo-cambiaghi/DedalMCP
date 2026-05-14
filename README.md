@@ -5,15 +5,30 @@
 ![MCP](https://img.shields.io/badge/mcp-compatible-green.svg)
 
 ```text
-    Daedalus (Greek: Δαίδαλος) was the
-    mythical master craftsman who built
-    the Labyrinth for King Minos and
-    crafted wings of wax and feathers.
-
-    DedalMCP channels that craft: it
-    lets your AI sculpt placeholder
-    meshes in Blender and deliver them
-    straight to your game engine.
+                                                          
+                                                           
+                               ↖                           
+                            ↓↑↑↑↑                          
+                           ↑↑↑↑↑↑                          
+                           ↑↑↑↑↑↑  →↑↑↑↑↑↑↑↑↑↑↑↑↗          
+                           ↑↑↑↑↑↑                          
+                           ↑↑↑↑↑↑                          
+                      ↗→   ↓↓↓↓↓↓   ↗→                         Daedalus (Greek: Δαίδαλος) was the
+                  ←↗↗↓                ↘↗↑                     mythical master craftsman who built
+                                                               the Labyrinth for King Minos and
+            ↗↗↗↗↗↗↗↗↗↗↗↗↗↗↗↗↗↗↗↗↗↗↗↗↗↗→               crafted wings of wax and feathers.
+               ↖↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑                    DedalMCP channels that craft: it
+           ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑               lets your AI sculpt placeholder
+           ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑               meshes in Blender and deliver them
+              ↙→↗↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↗→↙                 straight to your game engine.
+                    →↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↘                    
+                      ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↗                      
+                       ↑↑↑↑↑↑↑↑↑↑↑↑↑                                                   
+                      →↗↗↗↗↗↗↗↗↗↘                                                       
+                      ↓↑↑↑↑↑↑↑↑↑↑↑↑↑↙                      
+                     ↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↗                     
+                   →↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↓                   
+                   ←←←←←←←←←←←←←←←←←←←←←              
 ```
 
 > **Give your AI the power to control Blender — live or headless — for any game engine.**
