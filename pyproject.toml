@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dedal-mcp"
+version = "0.1.0"
+description = "MCP server for generating placeholder meshes via Blender CLI"
+requires-python = ">=3.9"
+dependencies = [
+    "mcp>=1.0.0",
+]
+
+[project.scripts]
+dedal-mcp = "dedal_mcp.server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
