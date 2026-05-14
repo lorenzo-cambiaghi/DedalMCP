@@ -16,19 +16,41 @@
     straight to your game engine.
 ```
 
-> **Give your AI the power to generate 3D placeholder meshes on demand — for any game engine.**
+> **Give your AI the power to control Blender — live or headless — for any game engine.**
 
-Traditionally, when your AI needs a placeholder mesh for prototyping, it can only describe what you should model. With **DedalMCP**, the AI generates the mesh itself — vertex-colored, correctly oriented, and exported directly into your project folder. No Blender GUI, no modeling skills, no copy-paste.
+DedalMCP is a Python MCP server that gives AI assistants two ways to work with Blender:
+
+- **Live Mode** — The AI opens Blender's GUI and sends raw `bpy` Python code in real-time. You watch meshes appear, get modified, and exported while the AI works. No addon to install — the RPC server is injected automatically at launch.
+- **Headless Mode** — The AI generates meshes from built-in presets without ever opening a window. Fast batch export of vertex-colored placeholders straight into your project folder.
 
 ### 🏛️ The "Wow" Factor: Talk to Blender
 
 Imagine asking your AI:
-> *"Create a placeholder village — a house with red roof, five pine trees, a stone wall around it, and some barrels near the entrance."*
+> *"Open Blender, model a watchtower with a cylindrical base and a cone roof, then export it to my Unity project."*
 
 - **Without DedalMCP:** The AI tells you to download assets from a store, or model them yourself, or use Unity primitives that look awful.
-- **With DedalMCP:** The AI generates every mesh in seconds. Vertex-colored, correctly scaled in meters, exported as FBX/GLB, ready to drop into your scene.
+- **With DedalMCP:** The AI opens Blender, writes the `bpy` code itself, you watch the tower appear in the viewport, and the FBX lands in your project folder.
 
-**Example:** *"Generate a house placeholder"*
+**Live Mode Example:**
+```
+→ start_blender {}
+← Blender GUI started with RPC server on localhost:8081.
+
+→ execute_blender_python {"script": "
+import bpy
+bpy.ops.mesh.primitive_cylinder_add(radius=2, depth=6, location=(0,0,3))
+base = bpy.context.active_object
+base.name = 'Tower_Base'
+bpy.ops.mesh.primitive_cone_add(radius1=2.5, radius2=0, depth=2, location=(0,0,7))
+roof = bpy.context.active_object
+roof.name = 'Tower_Roof'
+print(f'Created {base.name} and {roof.name}')
+"}
+← OUTPUT:
+Created Tower_Base and Tower_Roof
+```
+
+**Headless Mode Example:**
 ```
 → create_mesh {"name": "house", "preset": "house", "size": {"x":6, "y":4, "z":8},
                "colors": {"walls": "#D0D0D0", "roof": "#993333", "door": "#5C3A1E"}}
@@ -42,7 +64,37 @@ Imagine asking your AI:
 
 ## 🔨 How it Works (Under the Hood)
 
-DedalMCP is a Python [MCP](https://modelcontextprotocol.io/) server that runs **Blender in headless mode** (`--background --python`) to generate meshes. No Blender GUI ever opens. The server:
+### Live Mode (RPC)
+
+DedalMCP can launch Blender with a lightweight RPC server auto-injected via `blender --python`. No addon installation required — zero configuration on the Blender side.
+
+1. The AI calls `start_blender` → Blender opens with the GUI visible
+2. A TCP server starts on `localhost:8081` inside the Blender process
+3. The AI sends Python code via `execute_blender_python`
+4. The code executes on Blender's main thread (thread-safe via `bpy.app.timers`)
+5. Results (stdout + errors) are sent back to the AI
+
+```
+AI: "Add a cube, scale it to 3x1x3, and name it 'Floor'"
+
+→ execute_blender_python {"script": "
+import bpy
+bpy.ops.mesh.primitive_cube_add(size=1, location=(0,0,0))
+obj = bpy.context.active_object
+obj.name = 'Floor'
+obj.scale = (3, 1, 3)
+bpy.ops.object.transform_apply(scale=True)
+print('Floor created')
+"}
+← OUTPUT:
+Floor created
+```
+
+The AI has full `bpy` access — it can model, apply modifiers, set up materials, export, or do anything Blender's Python API supports.
+
+### Headless Mode (Presets)
+
+For quick batch generation, DedalMCP runs Blender in background mode (`--background --python`) without a GUI:
 
 1. Receives a tool call from the AI (e.g. `create_mesh` with preset and colors)
 2. Generates a complete `bpy` Python script from the preset template
@@ -50,26 +102,18 @@ DedalMCP is a Python [MCP](https://modelcontextprotocol.io/) server that runs **
 4. Blender creates the mesh, assigns vertex colors, and exports FBX/GLB
 5. The file lands in your project folder, ready for import
 
-```
-AI: "Create a barrel, make it dark brown"
-
-→ create_mesh {"name": "barrel", "preset": "barrel", "colors": {"body": "#5C3A1E"}}
-← Exported 1 file(s):
-    models/placeholders/barrel.fbx (8640 bytes)
-```
-
-No addon to install. No Blender window. Just meshes.
+Both modes coexist in the same MCP server and can be used in the same session.
 
 ---
 
 ## Features
 
-- **19 Built-in Presets**: Primitives, architecture, props, and vegetation — all parameterized by size and color.
+- **Live Blender Control**: Open Blender's GUI and execute arbitrary `bpy` code in real-time via RPC. Zero addon installation — auto-injected at launch.
+- **19 Built-in Presets**: Primitives, architecture, props, and vegetation — all parameterized by size and color for headless generation.
 - **Vertex Colors Only**: No textures, no UVs, no material setup. Minimal complexity for maximum prototyping speed.
 - **Engine-Agnostic**: Built-in export profiles for **Unity**, **Godot**, **Unreal**, **Stride**, and **Flax** — correct axis orientation, scale, format, and output paths per engine.
-- **Blender CLI**: Runs fully headless. No addon, no GUI, no interaction required.
-- **Custom bpy Scripts**: When presets aren't enough, the AI can write raw Blender Python code.
-- **Batch Generation**: Create dozens of meshes in a single Blender session for speed.
+- **Dual Mode**: Use headless mode for fast batch export, live mode for interactive modeling — or mix both in the same session.
+- **Persistent State**: In live mode, variables defined in one `execute_blender_python` call persist to the next. Build complex scenes incrementally.
 
 ---
 
@@ -84,9 +128,10 @@ When combined, the AI gets a **complete prototyping pipeline**:
 - **AkerMCP** imports them into the engine and places them in the scene via `execute`.
 
 ```
-1. DedalMCP → batch_create [house, tree x5, wall, barrel x3]  ← generates 10 FBX files
-2. AkerMCP  → execute "AssetDatabase.Refresh()"               ← Unity imports them
-3. AkerMCP  → execute "place everything in the scene"         ← objects appear in editor
+1. DedalMCP → start_blender                                ← opens Blender
+2. DedalMCP → execute_blender_python "model + export FBX"  ← AI models and exports
+3. AkerMCP  → execute "AssetDatabase.Refresh()"            ← Unity imports the FBX
+4. AkerMCP  → execute "place everything in the scene"      ← objects appear in editor
 ```
 
 ---
@@ -123,7 +168,7 @@ When combined, the AI gets a **complete prototyping pipeline**:
 | **Python** | 3.9+ | `python --version` | [python.org](https://python.org) |
 | **Blender** | 3.6+ | `blender --version` | [blender.org/download](https://blender.org/download) |
 
-> **Note:** Blender does not need to be open. DedalMCP runs it in headless mode via the command line.
+> **Note:** For headless mode, Blender does not need to be open — DedalMCP runs it in background mode via the command line. For live mode, DedalMCP launches Blender's GUI automatically.
 
 ---
 
@@ -377,9 +422,26 @@ You should see:
 
 If you see this, everything is working. `list_presets` does not require Blender — it runs locally.
 
+To test live mode:
+
+```
+"Start Blender and create a sphere"
+```
+
+Blender should open, and a sphere should appear in the viewport.
+
 ---
 
 ## MCP Tools
+
+### Live Mode (RPC)
+
+| Tool | Description |
+|------|-------------|
+| `start_blender` | Launch Blender GUI with the RPC server auto-injected. Idempotent — if Blender is already running, this is a no-op. |
+| `execute_blender_python` | Execute raw `bpy` Python code in the live Blender session. Full API access, persistent state between calls. |
+
+### Headless Mode (Presets)
 
 | Tool | Description |
 |------|-------------|
@@ -388,7 +450,18 @@ If you see this, everything is working. `list_presets` does not require Blender 
 | `batch_create` | Create multiple meshes in one Blender session (faster) |
 | `list_presets` | List all presets, parameters, default colors, and engine profiles |
 
-Every tool accepts an optional `engine` parameter to override the default export profile.
+Headless tools accept an optional `engine` parameter to override the default export profile.
+
+### When to Use Which
+
+| Scenario | Tool | Mode |
+|----------|------|------|
+| Quick batch of placeholder FBX files | `batch_create` | Headless |
+| Standard preset with custom colors | `create_mesh` | Headless |
+| Complex custom modeling, iterating on a shape | `execute_blender_python` | Live |
+| Boolean cuts, modifiers, procedural geometry | `execute_blender_python` | Live |
+| Inspecting/modifying an existing `.blend` file | `execute_blender_python` | Live |
+| Exporting from a live scene you've been building | `execute_blender_python` | Live |
 
 ---
 
@@ -425,6 +498,8 @@ Most engines don't display vertex colors by default. Copy the appropriate shader
 
 ## Example Session
 
+### Headless — Batch placeholder generation
+
 ```
 → list_presets {}
 ← 6 engine profiles, 19 presets available...
@@ -449,16 +524,61 @@ Most engines don't display vertex colors by default. Copy the appropriate shader
     Assets/Models/Placeholders/pine_3.fbx (4120 bytes)
     Assets/Models/Placeholders/wall_section.fbx (2840 bytes)
     Assets/Models/Placeholders/barrel_1.fbx (8640 bytes)
+```
 
-→ create_from_script {"name": "spiral_staircase", "script": "
-import math
-bpy.ops.mesh.primitive_cube_add(size=0.5)
-step = bpy.context.active_object
-step.name = 'spiral_staircase'
-# ... (custom bpy code for a spiral staircase)
+### Live — Interactive modeling session
+
+```
+→ start_blender {}
+← Blender GUI started with RPC server on localhost:8081.
+
+→ execute_blender_python {"script": "
+import bpy
+# Clear default scene
+bpy.ops.object.select_all(action='SELECT')
+bpy.ops.object.delete()
+print('Scene cleared')
 "}
-← Exported 1 file(s):
-    models/placeholders/spiral_staircase.fbx (18400 bytes)
+← OUTPUT:
+Scene cleared
+
+→ execute_blender_python {"script": "
+import bpy
+# Create a watchtower base
+bpy.ops.mesh.primitive_cylinder_add(radius=2, depth=6, location=(0,0,3))
+tower = bpy.context.active_object
+tower.name = 'Watchtower_Base'
+
+# Add a cone roof
+bpy.ops.mesh.primitive_cone_add(radius1=2.5, radius2=0, depth=2, location=(0,0,7))
+roof = bpy.context.active_object
+roof.name = 'Watchtower_Roof'
+
+# Join them
+bpy.ops.object.select_all(action='SELECT')
+bpy.context.view_layer.objects.active = tower
+bpy.ops.object.join()
+tower.name = 'Watchtower'
+
+print(f'Watchtower created: {len(tower.data.vertices)} vertices')
+"}
+← OUTPUT:
+Watchtower created: 128 vertices
+
+→ execute_blender_python {"script": "
+import bpy
+# Export directly from the live session
+bpy.ops.object.select_all(action='SELECT')
+bpy.ops.export_scene.fbx(
+    filepath=r'C:/MyProject/Assets/Models/Placeholders/watchtower.fbx',
+    use_selection=True,
+    axis_forward='-Z',
+    axis_up='Y',
+)
+print('Exported watchtower.fbx')
+"}
+← OUTPUT:
+Exported watchtower.fbx
 ```
 
 ---
@@ -469,21 +589,30 @@ step.name = 'spiral_staircase'
 LLM (Claude, Cursor, Copilot, Antigravity)
     │ JSON-RPC 2.0 / stdio
     ▼
-┌──────────────────────────┐
-│     DedalMCP Server      │  Python MCP server
-│   4 tools, 19 presets    │
-│   6 engine profiles      │
-└──────────┬───────────────┘
-           │ subprocess: blender --background --python
-           ▼
-┌──────────────────────────┐
-│      Blender CLI         │  Headless, no GUI
-│  bpy script generates    │
-│  mesh + vertex colors    │
-│  → exports FBX / GLB     │
-└──────────┬───────────────┘
-           │ file written to disk
-           ▼
+┌───────────────────────────────────┐
+│         DedalMCP Server           │  Python MCP server
+│   6 tools, 19 presets             │
+│   6 engine profiles               │
+│                                   │
+│  ┌─────────────┐ ┌─────────────┐ │
+│  │  Headless   │ │    Live     │ │
+│  │   Channel   │ │   Channel   │ │
+│  └──────┬──────┘ └──────┬──────┘ │
+└─────────┼───────────────┼────────┘
+          │               │
+          │ subprocess    │ TCP socket
+          │ blender -b    │ localhost:8081
+          ▼               ▼
+┌──────────────┐  ┌──────────────────┐
+│ Blender CLI  │  │  Blender GUI     │
+│ (headless)   │  │  + RPC server    │
+│ generates →  │  │  (auto-injected) │
+│ exports →    │  │  bpy.app.timers  │
+│ exits        │  │  main thread     │
+└──────┬───────┘  └──────────────────┘
+       │
+       │ file written to disk
+       ▼
 ┌──────────────────────────┐
 │    Your Game Project     │  Any engine: Unity, Godot,
 │  (auto-import on refresh)│  Unreal, Stride, Flax, ...
@@ -496,8 +625,10 @@ LLM (Claude, Cursor, Copilot, Antigravity)
 DedalMCP/
 ├── pyproject.toml
 ├── src/dedal_mcp/
-│   ├── server.py                  MCP server — 4 tools
-│   ├── blender_runner.py          Subprocess: blender --background --python
+│   ├── server.py                  MCP server — 6 tools, routing only
+│   ├── blender_runner.py          Headless: subprocess blender --background --python
+│   ├── blender_rpc.py             Injected into Blender: TCP server + main thread dispatcher
+│   ├── blender_rpc_client.py      Live: TCP client, launch_blender(), execute_python()
 │   ├── script_builder.py          Generates bpy scripts from preset + profile
 │   ├── engine_profiles.py         Export profiles (axis, scale, format, paths)
 │   ├── vertex_colors.py           Vertex color bpy code generation
@@ -509,6 +640,17 @@ DedalMCP/
     ├── unity/VertexColor.shader
     └── godot/vertex_color.gdshader
 ```
+
+### How the two channels work
+
+| | Headless Channel | Live Channel |
+|---|---|---|
+| **Blender process** | Started and killed per tool call | Started once, stays open |
+| **Communication** | Subprocess stdin/stdout | TCP socket `localhost:8081` |
+| **Thread safety** | N/A (separate process) | `bpy.app.timers` dispatches to main thread |
+| **State** | Stateless — fresh scene each time | Persistent — variables survive between calls |
+| **Used by** | `create_mesh`, `create_from_script`, `batch_create` | `start_blender`, `execute_blender_python` |
+| **Blender addon required** | No | No (auto-injected via `--python`) |
 
 ---
 
@@ -552,6 +694,18 @@ Blender's first launch loads add-ons and caches. Subsequent runs are faster. For
 **`list_presets` works but `create_mesh` fails**
 
 `list_presets` runs locally (no Blender needed). `create_mesh` requires Blender to be installed and accessible. Check that `BLENDER_PATH` is correct and that `blender --version` works from your terminal.
+
+**`execute_blender_python` says "Connection refused"**
+
+Blender must be running with the RPC server. Call `start_blender` first and wait a few seconds for Blender to finish loading before sending commands.
+
+**Calling `start_blender` twice**
+
+This is safe. If the RPC server is already listening on port 8081, `start_blender` detects it and returns without launching a second instance.
+
+**Live mode scripts seem to share variables**
+
+This is by design. The `exec()` context persists between calls, so variables, functions, and imports from one `execute_blender_python` call are available in subsequent calls. This lets you build complex scenes incrementally.
 
 ---
 

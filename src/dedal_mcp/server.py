@@ -9,6 +9,11 @@ from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
 from dedal_mcp.blender_runner import run_script, BlenderError
+from dedal_mcp.blender_rpc_client import (
+    launch_blender,
+    execute_python,
+    BlenderRpcError,
+)
 from dedal_mcp.script_builder import (
     build_preset_script,
     build_custom_script,
@@ -22,6 +27,8 @@ app = Server("dedal-mcp")
 PROJECT_PATH = os.environ.get("PROJECT_PATH", ".")
 ENGINE = os.environ.get("DEDAL_ENGINE", "generic")
 
+
+# ── Tool definitions ─────────────────────────────────────────────────
 
 @app.list_tools()
 async def list_tools() -> list[Tool]:
@@ -136,12 +143,44 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="start_blender",
+            description=(
+                "Start the Blender GUI with the RPC channel injected. "
+                "Required before using execute_blender_python. "
+                "If Blender is already running with the RPC server, this is a no-op."
+            ),
+            inputSchema={"type": "object", "properties": {}},
+        ),
+        Tool(
+            name="execute_blender_python",
+            description=(
+                "Execute raw bpy (Blender Python) code in the live Blender session. "
+                "Blender MUST be running first (call start_blender). "
+                "The code runs on Blender's main thread with full access to the "
+                "bpy API and can manipulate the open scene in real-time. "
+                "Variables defined in one call persist to the next. "
+                "Use print() to return output to the AI."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "script": {
+                        "type": "string",
+                        "description": "Python code to execute inside Blender (bpy is available)",
+                    },
+                },
+                "required": ["script"],
+            },
+        ),
+        Tool(
             name="list_presets",
             description="List all available mesh presets with descriptions and default colors. Also shows supported engine profiles.",
             inputSchema={"type": "object", "properties": {}},
         ),
     ]
 
+
+# ── Tool dispatch ────────────────────────────────────────────────────
 
 @app.call_tool()
 async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
@@ -154,17 +193,33 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             return _handle_create_from_script(arguments)
         elif name == "batch_create":
             return _handle_batch_create(arguments)
+        elif name == "start_blender":
+            return _handle_start_blender()
+        elif name == "execute_blender_python":
+            return _handle_execute_blender_python(arguments)
         else:
             return [TextContent(type="text", text=f"Unknown tool: {name}")]
     except BlenderError as e:
         return [TextContent(type="text", text=f"Blender error: {e}")]
+    except BlenderRpcError as e:
+        return [TextContent(type="text", text=f"Blender RPC error: {e}")]
     except Exception as e:
         return [TextContent(type="text", text=f"Error: {type(e).__name__}: {e}")]
 
 
+# ── Handlers ─────────────────────────────────────────────────────────
+
 def _get_profile(args: dict):
     engine_name = args.get("engine", ENGINE)
     return get_profile(engine_name)
+
+
+def _resolve_output_dir(path: str | None, profile) -> str:
+    if path:
+        if os.path.isabs(path):
+            return path
+        return os.path.join(PROJECT_PATH, path)
+    return os.path.join(PROJECT_PATH, profile.default_output_subdir)
 
 
 def _handle_list_presets() -> list[TextContent]:
@@ -233,13 +288,25 @@ def _handle_batch_create(args: dict) -> list[TextContent]:
     return [TextContent(type="text", text=result)]
 
 
-def _resolve_output_dir(path: str | None, profile) -> str:
-    if path:
-        if os.path.isabs(path):
-            return path
-        return os.path.join(PROJECT_PATH, path)
-    return os.path.join(PROJECT_PATH, profile.default_output_subdir)
+def _handle_start_blender() -> list[TextContent]:
+    message = launch_blender()
+    return [TextContent(type="text", text=message)]
 
+
+def _handle_execute_blender_python(args: dict) -> list[TextContent]:
+    result = execute_python(args["script"])
+
+    parts = []
+    if result.error:
+        parts.append(f"ERROR:\n{result.error}")
+    if result.output:
+        parts.append(f"OUTPUT:\n{result.output}")
+
+    text = "\n\n".join(parts) if parts else "Script executed successfully (no output)."
+    return [TextContent(type="text", text=text)]
+
+
+# ── Entry point ──────────────────────────────────────────────────────
 
 def main():
     import asyncio
