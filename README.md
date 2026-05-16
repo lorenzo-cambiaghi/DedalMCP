@@ -650,9 +650,15 @@ DedalMCP/
 │   ├── vertex_colors.py           Vertex color bpy code generation
 │   └── presets/
 │       ├── loader.py              Discovery: built-in JSONs + user dirs
-│       ├── types/                 Typed-preset interpreters (composite, script_template)
+│       ├── types/                 Typed-preset interpreters
+│       │   ├── composite.py         declarative primitive composition
+│       │   ├── script_template.py   raw bpy code with safe placeholders
+│       │   ├── mesh_data.py         baked vertices/faces/colors
+│       │   └── safe_eval.py         AST-based expression evaluator (shared)
 │       └── data/                  19 built-in preset JSON files (one per preset)
 └── extras/
+    ├── blender_plugin/
+    │   └── dedal_preset_editor.py    Blender add-on: visual authoring + JSON round-trip
     ├── unity/VertexColor.shader
     └── godot/vertex_color.gdshader
 ```
@@ -971,12 +977,12 @@ You almost never write a `mesh_data` JSON by hand — the file would be huge and
 
 ### 4d. Blender plugin for visual preset editing
 
-For users who'd rather model in Blender's viewport than write JSON, the repo ships a single-file Blender addon at `extras/blender_plugin/dedal_exporter.py`. It produces and consumes `composite/v1` and `mesh_data/v1` files, with **intelligent type detection**: if you only translate/rotate/scale a primitive, it stays parametric; if you edit its vertices or add modifiers, it becomes mesh data.
+For users who'd rather model in Blender's viewport than write JSON, the repo ships a single-file Blender addon at `extras/blender_plugin/dedal_preset_editor.py`. It produces and consumes `composite/v1` and `mesh_data/v1` files, with **intelligent type detection**: if you only translate/rotate/scale a primitive, it stays parametric; if you edit its vertices or add modifiers, it becomes mesh data.
 
 #### Installation
 
 1. Open Blender → **Edit > Preferences > Add-ons > Install...**
-2. Pick `extras/blender_plugin/dedal_exporter.py` from this repo.
+2. Pick `extras/blender_plugin/dedal_preset_editor.py` from this repo.
 3. Enable the checkbox next to "Import-Export: DedalMCP Preset Editor".
 4. Press **N** in the 3D viewport. A "DedalMCP" tab appears in the sidebar.
 
