@@ -1,0 +1,30 @@
+{
+  "type": "composite",
+  "version": 1,
+  "name": "capsule",
+  "category": "primitive",
+  "description": "Capsule (cylinder + hemisphere caps). Size: x=diameter, y=total height",
+  "default_colors": {"body": "#808080"},
+  "size_defaults": {"x": 0.5, "y": 2},
+  "parts": [
+    {
+      "shape": "cylinder",
+      "params": {"radius": "x/2", "depth": "max(0.01, y - x)", "vertices": 16},
+      "location": [0, 0, "y/2"],
+      "color": "body"
+    },
+    {
+      "shape": "sphere",
+      "params": {"radius": "x/2", "segments": 12, "ring_count": 8},
+      "location": [0, 0, "y/2 + max(0.01, y - x)/2"],
+      "color": "body"
+    },
+    {
+      "shape": "sphere",
+      "params": {"radius": "x/2", "segments": 12, "ring_count": 8},
+      "location": [0, 0, "y/2 - max(0.01, y - x)/2"],
+      "color": "body"
+    }
+  ],
+  "join": true
+}

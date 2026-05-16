@@ -1,0 +1,17 @@
+{
+  "type": "composite",
+  "version": 1,
+  "name": "cylinder",
+  "category": "primitive",
+  "description": "Cylinder. Size: x=diameter, y=height",
+  "default_colors": {"body": "#808080"},
+  "size_defaults": {"x": 1, "y": 2},
+  "parts": [
+    {
+      "shape": "cylinder",
+      "params": {"radius": "x/2", "depth": "y", "vertices": 16},
+      "location": [0, 0, "y/2"],
+      "color": "body"
+    }
+  ]
+}

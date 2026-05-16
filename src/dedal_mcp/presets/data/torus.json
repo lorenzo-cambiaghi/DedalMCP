@@ -1,0 +1,22 @@
+{
+  "type": "composite",
+  "version": 1,
+  "name": "torus",
+  "category": "primitive",
+  "description": "Torus/donut. Size: x=outer diameter, y=tube diameter",
+  "default_colors": {"body": "#808080"},
+  "size_defaults": {"x": 2, "y": 0.5},
+  "parts": [
+    {
+      "shape": "torus",
+      "params": {
+        "major_radius": "x/2",
+        "minor_radius": "y/2",
+        "major_segments": 24,
+        "minor_segments": 12
+      },
+      "location": [0, 0, "x/2"],
+      "color": "body"
+    }
+  ]
+}

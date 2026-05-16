@@ -1,0 +1,17 @@
+{
+  "type": "composite",
+  "version": 1,
+  "name": "cone",
+  "category": "primitive",
+  "description": "Cone. Size: x=base diameter, y=height",
+  "default_colors": {"body": "#808080"},
+  "size_defaults": {"x": 1, "y": 2},
+  "parts": [
+    {
+      "shape": "cone",
+      "params": {"radius1": "x/2", "radius2": 0, "depth": "y", "vertices": 16},
+      "location": [0, 0, "y/2"],
+      "color": "body"
+    }
+  ]
+}

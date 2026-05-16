@@ -16,3 +16,6 @@ dedal-mcp = "dedal_mcp.server:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"dedal_mcp" = ["presets/data/*.json"]

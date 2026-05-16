@@ -1,0 +1,24 @@
+{
+  "type": "composite",
+  "version": 1,
+  "name": "tree_pine",
+  "category": "prop",
+  "description": "Pine tree (cone on cylinder). Size: y=total height. Colors: trunk, crown",
+  "default_colors": {"trunk": "#6B4226", "crown": "#2D6B2D"},
+  "size_defaults": {"y": 4},
+  "parts": [
+    {
+      "shape": "cylinder",
+      "params": {"radius": "y*0.04", "depth": "y*0.3", "vertices": 8},
+      "location": [0, 0, "y*0.3/2"],
+      "color": "trunk"
+    },
+    {
+      "shape": "cone",
+      "params": {"radius1": "y*0.2", "radius2": 0, "depth": "y*0.7", "vertices": 8},
+      "location": [0, 0, "y*0.3 + y*0.7/2"],
+      "color": "crown"
+    }
+  ],
+  "join": true
+}

@@ -1,0 +1,31 @@
+{
+  "type": "script_template",
+  "version": 1,
+  "name": "barrel",
+  "category": "prop",
+  "description": "Barrel with slight bulge. Size: x=diameter, y=height",
+  "default_colors": {"body": "#8B6914", "bands": "#444444"},
+  "size_defaults": {"x": 0.5, "y": 1},
+  "script": [
+    "import bmesh",
+    "r = {x} / 2",
+    "h = {y}",
+    "",
+    "bpy.ops.mesh.primitive_cylinder_add(radius=r, depth=h, vertices=16)",
+    "obj = bpy.context.active_object",
+    "obj.name = {name|repr}",
+    "obj.location = (0, 0, h/2)",
+    "",
+    "bm = bmesh.new()",
+    "bm.from_mesh(obj.data)",
+    "half_h = h / 2",
+    "for v in bm.verts:",
+    "    frac = abs(v.co.z) / half_h",
+    "    bulge = 1.0 + 0.08 * (1.0 - frac * frac)",
+    "    v.co.x *= bulge",
+    "    v.co.y *= bulge",
+    "bm.to_mesh(obj.data)",
+    "bm.free()",
+    "_set_vertex_color_all(obj, {color.body|repr})"
+  ]
+}

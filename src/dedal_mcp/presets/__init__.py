@@ -1,14 +1,15 @@
 from __future__ import annotations
-"""Preset registry — maps preset names to builder functions."""
+"""Preset registry — backed by JSON files discovered at import time.
 
-from dedal_mcp.presets.primitives import PRIMITIVES
-from dedal_mcp.presets.architecture import ARCHITECTURE
-from dedal_mcp.presets.props import PROPS
+Public API preserved from the previous Python-based implementation:
+- ``PRESETS``: dict[name -> entry]
+- ``get_preset(name)``: lookup by name (case-insensitive)
+- ``list_all_presets()``: summary list for tooling/list_presets tool
+"""
 
-PRESETS: dict[str, dict] = {}
-PRESETS.update(PRIMITIVES)
-PRESETS.update(ARCHITECTURE)
-PRESETS.update(PROPS)
+from dedal_mcp.presets.loader import load_all
+
+PRESETS: dict[str, dict] = load_all()
 
 
 def get_preset(name: str) -> dict | None:

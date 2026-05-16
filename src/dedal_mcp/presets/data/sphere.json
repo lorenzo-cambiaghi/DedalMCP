@@ -1,0 +1,17 @@
+{
+  "type": "composite",
+  "version": 1,
+  "name": "sphere",
+  "category": "primitive",
+  "description": "UV sphere. Size: x=diameter",
+  "default_colors": {"body": "#808080"},
+  "size_defaults": {"x": 1},
+  "parts": [
+    {
+      "shape": "sphere",
+      "params": {"radius": "x/2", "segments": 16, "ring_count": 12},
+      "location": [0, 0, "x/2"],
+      "color": "body"
+    }
+  ]
+}

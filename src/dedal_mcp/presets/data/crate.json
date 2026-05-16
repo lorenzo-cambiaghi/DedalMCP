@@ -1,0 +1,22 @@
+{
+  "type": "script_template",
+  "version": 1,
+  "name": "crate",
+  "category": "prop",
+  "description": "Wooden crate with beveled edges. Size: x=side length",
+  "default_colors": {"body": "#8B6914"},
+  "size_defaults": {"x": 1},
+  "script": [
+    "s = {x}",
+    "",
+    "bpy.ops.mesh.primitive_cube_add(size=s)",
+    "obj = bpy.context.active_object",
+    "obj.name = {name|repr}",
+    "obj.location = (0, 0, s/2)",
+    "mod = obj.modifiers.new(name='Bevel', type='BEVEL')",
+    "mod.width = s * 0.03",
+    "mod.segments = 1",
+    "bpy.ops.object.modifier_apply(modifier='Bevel')",
+    "_set_vertex_color_all(obj, {color.body|repr})"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "type": "composite",
+  "version": 1,
+  "name": "plane",
+  "category": "primitive",
+  "description": "Flat plane. Size: x=width, z=depth",
+  "default_colors": {"body": "#808080"},
+  "size_defaults": {"x": 10, "y": 1, "z": 10},
+  "parts": [
+    {
+      "shape": "plane",
+      "params": {"size": 1},
+      "scale": ["x/2", "z/2", 1],
+      "color": "body"
+    }
+  ]
+}

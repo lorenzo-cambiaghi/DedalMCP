@@ -1,0 +1,31 @@
+{
+  "type": "script_template",
+  "version": 1,
+  "name": "ramp",
+  "category": "architecture",
+  "description": "Sloped ramp. Size: x=width, y=height, z=depth",
+  "default_colors": {"body": "#B0B0B0"},
+  "size_defaults": {"x": 2, "y": 2, "z": 4},
+  "script": [
+    "import bmesh",
+    "w = {x}",
+    "h = {y}",
+    "d = {z}",
+    "",
+    "bpy.ops.mesh.primitive_cube_add(size=1)",
+    "obj = bpy.context.active_object",
+    "obj.name = {name|repr}",
+    "obj.scale = (w/2, d/2, h/2)",
+    "obj.location = (0, 0, h/2)",
+    "bpy.ops.object.transform_apply(scale=True)",
+    "",
+    "bm = bmesh.new()",
+    "bm.from_mesh(obj.data)",
+    "for v in bm.verts:",
+    "    if v.co.y < 0 and v.co.z > 0:",
+    "        v.co.z = 0",
+    "bm.to_mesh(obj.data)",
+    "bm.free()",
+    "_set_vertex_color_all(obj, {color.body|repr})"
+  ]
+}
