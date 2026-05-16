@@ -8,6 +8,7 @@ either literal numbers or short arithmetic expressions over the size dict
 
 from __future__ import annotations
 
+import math
 from typing import Any, Callable
 
 from dedal_mcp.presets.types import register
@@ -104,6 +105,7 @@ def _build_part(part: dict, index: int, variables: dict) -> tuple[str, str]:
 
     scale = _resolve_vec(part.get("scale"), variables, (1.0, 1.0, 1.0))
     location = _resolve_vec(part.get("location"), variables, (0.0, 0.0, 0.0))
+    rotation_deg = _resolve_vec(part.get("rotation"), variables, (0.0, 0.0, 0.0))
     color = part.get("color")
 
     part_var = f"p_{index}"
@@ -115,6 +117,11 @@ def _build_part(part: dict, index: int, variables: dict) -> tuple[str, str]:
     if scale != (1.0, 1.0, 1.0):
         lines.append(f"{part_var}.scale = ({_format_num(scale[0])}, {_format_num(scale[1])}, {_format_num(scale[2])})")
         lines.append("bpy.ops.object.transform_apply(scale=True)")
+    if rotation_deg != (0.0, 0.0, 0.0):
+        # rotation in JSON is degrees (human-friendly); Blender's rotation_euler is radians.
+        rx, ry, rz = (math.radians(float(a)) for a in rotation_deg)
+        lines.append(f"{part_var}.rotation_euler = ({_format_num(rx)}, {_format_num(ry)}, {_format_num(rz)})")
+        lines.append("bpy.ops.object.transform_apply(rotation=True)")
     if location != (0.0, 0.0, 0.0):
         lines.append(f"{part_var}.location = ({_format_num(location[0])}, {_format_num(location[1])}, {_format_num(location[2])})")
     if color is not None:

@@ -756,8 +756,9 @@ Whether you write a `composite` or `script_template` preset, these fields are al
 |---|---|
 | A handful of standard primitives (cube, sphere, cylinder, …) placed and joined together | **`composite`** — declarative, no Python, safest |
 | Anything that needs **loops** (e.g. 8 steps in a staircase), **bmesh** (custom vertex displacement), **modifiers** (bevel, mirror), or **randomness** | **`script_template`** — you write the bpy code, with placeholders |
+| A **hand-modeled mesh** with custom vertex positions and colors — anything you can't reach with primitives alone | **`mesh_data`** — raw geometry baked into the JSON, typically produced by the Blender plugin |
 
-When in doubt, start with `composite`. If you find yourself unable to express the shape, switch to `script_template`.
+When in doubt, start with `composite`. If you find yourself unable to express the shape, switch to `script_template`. If you want to model the shape *visually in Blender* and export, use `mesh_data` via the [companion plugin](#blender-plugin-for-visual-preset-editing).
 
 ---
 
@@ -785,6 +786,7 @@ Let's build a **watchtower**: a cylindrical base with a cone roof. Save this as 
       "shape": "cone",
       "params": {"radius1": "x*0.6", "radius2": 0, "depth": "y*0.3"},
       "location": [0, 0, "y*0.85"],
+      "rotation": [0, 0, 0],
       "color": "roof"
     }
   ],
@@ -798,6 +800,7 @@ Let's build a **watchtower**: a cylindrical base with a cone roof. Save this as 
 - **`shape`** picks which Blender primitive operator to call. See the [shape reference](#composite-shape-reference) below for the full list and their parameters.
 - **`params`** are the arguments to the primitive's `bpy.ops.mesh.primitive_*_add(...)` call. Values can be **literal numbers** (`16`) or **expressions** (`"x/2"`) that reference keys from `size_defaults` / the user's `size` override.
 - **`location`** is the part's position in world coordinates as `[x, y, z]` in meters. Blender is **Z-up by default**: `z` = vertical. Each element can be a number or an expression. Default is `[0, 0, 0]`.
+- **`rotation`** is the part's rotation as `[rx, ry, rz]` in **degrees** (more readable than radians; conversion happens automatically). Each element can be a number or an expression. Default is `[0, 0, 0]`. When non-zero, `transform_apply(rotation=True)` is emitted to bake the rotation into the mesh data — same idea as scale.
 - **`scale`** (not used here) is `[sx, sy, sz]`, multiplier on each axis. Default is `[1, 1, 1]`. When you scale a part, `transform_apply(scale=True)` is emitted right after, baking the scale into the mesh data. The object's `scale` is then back to 1 and the `location` you specify still refers to world coordinates — scaling never affects where you place things.
 - **`color`** is the **name of a zone** declared in `default_colors`. Not a hex string — a key. This lets the user re-tint the part by passing `colors: {"base": "#0000FF"}` without editing the JSON.
 - **`join: true`** joins all parts into one Blender object at the end, using the preset's `name`. Default is `true` when there are 2+ parts.
@@ -937,6 +940,79 @@ Multi-element set literals like `{x, y}` are safe (the comma stops the placehold
 
 ---
 
+### 4c. The `mesh_data/v1` type
+
+When `composite` and `script_template` are both too restrictive — typically because you've modeled the shape by hand in Blender — use `mesh_data`. It carries the **raw geometry** (vertex positions, face indices, optional per-vertex colors) directly in the JSON.
+
+```json
+{
+  "type": "mesh_data",
+  "version": 1,
+  "name": "carved_pillar",
+  "category": "custom",
+  "description": "Pillar with hand-sculpted top",
+  "vertices": [[0,0,0], [1,0,0], [0,1,0], [0,0,1], ...],
+  "faces": [[0,1,2], [0,2,3], ...],
+  "vertex_colors": [[0.8,0.6,0.4,1.0], [0.8,0.6,0.4,1.0], ...]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `vertices` | Array of `[x, y, z]` in meters, **world coordinates** at export time (transforms already baked). |
+| `faces` | Array of vertex-index arrays. Triangles (`[i,j,k]`) or quads (`[i,j,k,l]`) — n-gons supported. Indices must be `0 ≤ i < len(vertices)`. |
+| `vertex_colors` | *Optional*. One `[r, g, b]` or `[r, g, b, a]` per vertex, values `0–1`. If omitted, the mesh is uncolored. |
+
+> **`mesh_data` ignores `size` and `colors` overrides** from `create_mesh`. The geometry is baked at export time. To change anything, re-edit in Blender and re-export.
+
+You almost never write a `mesh_data` JSON by hand — the file would be huge and unreadable. Instead, use the **Blender plugin** described next, which generates these files for you and can also re-open them for editing.
+
+---
+
+### 4d. Blender plugin for visual preset editing
+
+For users who'd rather model in Blender's viewport than write JSON, the repo ships a single-file Blender addon at `extras/blender_plugin/dedal_exporter.py`. It produces and consumes `composite/v1` and `mesh_data/v1` files, with **intelligent type detection**: if you only translate/rotate/scale a primitive, it stays parametric; if you edit its vertices or add modifiers, it becomes mesh data.
+
+#### Installation
+
+1. Open Blender → **Edit > Preferences > Add-ons > Install...**
+2. Pick `extras/blender_plugin/dedal_exporter.py` from this repo.
+3. Enable the checkbox next to "Import-Export: DedalMCP Preset Editor".
+4. Press **N** in the 3D viewport. A "DedalMCP" tab appears in the sidebar.
+
+#### Workflow
+
+**Authoring a new composite preset** (e.g. a treehouse):
+
+1. In the **Add Primitive** section, pick a color and click "Cube" — a tagged cube appears in the scene.
+2. Move/rotate/scale it however you want. A tagged primitive stays parametric as long as you don't edit its vertices.
+3. Add more primitives (cube for trunk, cylinder for branches, …). Each one is independently tagged.
+4. In the **Export Preset** section, set the name/category/description, click **Export Selection as Preset**.
+5. The plugin checks each selected object:
+   - All still primitives? → exports as `composite/v1` (parts with their TRS preserved).
+   - Any have edited vertices or modifiers? → exports as `mesh_data/v1` (everything joined and baked).
+6. The JSON lands in `~/.dedal/presets/<name>.json` by default. It's immediately discoverable by the MCP server on next restart.
+
+**Re-editing an existing preset**:
+
+1. Click **Import Preset** and pick the JSON.
+   - `composite` files: each part becomes a separate primitive in the scene, re-tagged so you can keep editing parametrically.
+   - `mesh_data` files: a single mesh appears, with vertex colors restored.
+   - `script_template` files: cannot be edited visually — the plugin shows an error message, you must edit the JSON by hand.
+2. Make your changes. The N-panel header shows the current object's state (`✓ cube (parametric)` or `⚠ cube (geometry edited)`).
+3. Re-export. If you only adjusted transforms, you get back a clean `composite`. If you edited geometry, it becomes `mesh_data`.
+
+#### Marking an existing object
+
+If you have an object that wasn't created via the plugin's "Add" buttons (e.g. you used Blender's standard menu), select it, pick the matching shape in the **Tag Existing Object** section, and click **Mark**. You're attesting that the object is still pristine geometry — the plugin trusts you and tags it accordingly.
+
+#### What the plugin does NOT do
+
+- It does not preview presets that use `size`/`colors` parameters (`composite` expressions like `"x/2"` are not evaluated on import — defaults are used). Editing a built-in like `house` will reproduce its geometry roughly, but re-exporting won't preserve the parametric size relationships.
+- It does not communicate with the running MCP server. You must restart the AI client after export for the new preset to appear in `list_presets`.
+
+---
+
 ### 5. Testing your preset
 
 Once you've written the JSON, **restart your AI client** so the MCP server reloads. Then ask the AI:
@@ -979,7 +1055,9 @@ Example: `~/.dedal/presets/cube.json` overrides the built-in cube for your entir
 | Symptom | Likely cause |
 |---|---|
 | `Preset 'foo' from /your/path overrides /built-in/path` warning | Your file's `name` matches a built-in. Either rename, or intentionally override. |
-| `Unknown preset type 'xyz' v1. Known: composite/v1, script_template/v1` | Typo in `"type"`, or you meant to write `"type": "composite"`. |
+| `Unknown preset type 'xyz' v1. Known: composite/v1, mesh_data/v1, script_template/v1` | Typo in `"type"`, or you meant one of the three known types. |
+| `mesh_data preset missing required fields: ['faces']` | The `mesh_data` JSON must declare `vertices` AND `faces`. Re-export from the plugin. |
+| `faces[N] index X out of range [0,Y)` | Face indices reference vertices that don't exist. Usually means hand-edited JSON or a corrupted export. |
 | `parts[N] unknown shape 'cubed'` | Typo in `shape`. See the shape reference table. |
 | `parts[N] references color zone 'walls' not declared in default_colors` | You wrote `"color": "walls"` but never declared `"walls"` in `default_colors`. Add it. |
 | `Unknown name 'width' in expression 'width/2'` | You used a variable in an expression that isn't in `size_defaults`. Either rename to `x`, or add `"width": 1` to `size_defaults`. |

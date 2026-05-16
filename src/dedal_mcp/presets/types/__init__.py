@@ -48,3 +48,4 @@ def known_types() -> list[tuple[str, int]]:
 # Built-in types — importing the modules triggers self-registration.
 from dedal_mcp.presets.types import composite as _composite  # noqa: F401,E402
 from dedal_mcp.presets.types import script_template as _script_template  # noqa: F401,E402
+from dedal_mcp.presets.types import mesh_data as _mesh_data  # noqa: F401,E402
