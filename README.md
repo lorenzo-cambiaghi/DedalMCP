@@ -1,7 +1,7 @@
 # DedalMCP
 
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)
-![Platform](https://img.shields.io/badge/platform-Blender%203.6%2B-orange.svg)
+![Platform](https://img.shields.io/badge/platform-Blender%204.2%2B-orange.svg)
 ![MCP](https://img.shields.io/badge/mcp-compatible-green.svg)
 
 ```text
@@ -182,7 +182,7 @@ When combined, the AI gets a **complete prototyping pipeline**:
 | Requirement | Version | Check | Install |
 |-------------|---------|-------|---------|
 | **Python** | 3.9+ | `python --version` | [python.org](https://python.org) |
-| **Blender** | 3.6+ | `blender --version` | [blender.org/download](https://blender.org/download) |
+| **Blender** | 4.2 LTS+ | `blender --version` | [blender.org/download](https://blender.org/download) |
 
 > **Note:** For headless mode, Blender does not need to be open — DedalMCP runs it in background mode via the command line. For live mode, DedalMCP launches Blender's GUI automatically.
 
@@ -649,11 +649,12 @@ DedalMCP/
 │   ├── engine_profiles.py         Export profiles (axis, scale, format, paths)
 │   ├── vertex_colors.py           Vertex color bpy code generation
 │   └── presets/
-│       ├── loader.py              Discovery: built-in JSONs + user dirs
+│       ├── loader.py              Discovery: built-in JSONs + user dirs + blend search
 │       ├── types/                 Typed-preset interpreters
 │       │   ├── composite.py         declarative primitive composition
 │       │   ├── script_template.py   raw bpy code with safe placeholders
 │       │   ├── mesh_data.py         baked vertices/faces/colors
+│       │   ├── geometry_nodes.py    Geometry Nodes tree invocation from .blend
 │       │   └── safe_eval.py         AST-based expression evaluator (shared)
 │       └── data/                  19 built-in preset JSON files (one per preset)
 └── extras/
@@ -728,7 +729,7 @@ Your custom preset should appear in the output, marked by its category.
 
 ### 2. Fields every preset must have
 
-Whether you write a `composite` or `script_template` preset, these fields are always required:
+Regardless of the type (`composite`, `script_template`, `mesh_data`, or `geometry_nodes`), every preset declares the same handful of identification fields. Type-specific fields are documented in each tutorial below.
 
 ```json
 {
@@ -744,13 +745,13 @@ Whether you write a `composite` or `script_template` preset, these fields are al
 
 | Field | Meaning |
 |---|---|
-| `type` | Which **interpreter** parses the rest of the file. Either `"composite"` or `"script_template"` (more types may be added later — the system is extensible). |
-| `version` | Schema version of the type. Currently `1` for both built-in types. Future-proofs your JSON: if a `composite v2` ever ships, your `v1` files keep working unchanged. |
+| `type` | Which **interpreter** parses the rest of the file. One of `"composite"`, `"script_template"`, `"mesh_data"`, `"geometry_nodes"` (more types can be added by registering a new interpreter in `src/dedal_mcp/presets/types/`). |
+| `version` | Schema version of the type. Currently `1` for all built-in types. Future-proofs your JSON: if a `composite v2` ever ships, your `v1` files keep working unchanged. |
 | `name` | The name the AI uses to request your preset: `create_mesh {"preset": "mything", ...}`. Lowercase, no spaces. Must be unique (or it overrides a built-in by the same name). |
 | `category` | Free-text label used only to group presets in `list_presets` output. Common values: `primitive`, `architecture`, `prop`, `vegetation`, `custom`. |
 | `description` | Shown to the AI when it lists presets. **Be explicit about what `size.x`, `size.y`, `size.z` and each color zone mean** — the AI uses this to set sensible defaults. |
-| `default_colors` | A dict of *zone-name → hex color*. Each "zone" is a logical region of the mesh (e.g. `"trunk"`, `"crown"`, `"walls"`, `"roof"`). The user can override any zone per-call by passing `colors: {"zone": "#XXYYZZ"}`. The hex string is converted to vertex colors on the mesh. |
-| `size_defaults` | Default numeric parameters used when the user omits `size`. **Convention**: `x` = width, `y` = height, `z` = depth, all in **meters**. You can also define custom keys (e.g. `"steps"` for stairs). The user can override any key per-call by passing `size: {"x": 5}`. |
+| `default_colors` | A dict of *zone-name → hex color*. Each "zone" is a logical region of the mesh (e.g. `"trunk"`, `"crown"`, `"walls"`, `"roof"`). The user can override any zone per-call by passing `colors: {"zone": "#XXYYZZ"}`. The hex string is converted to vertex colors on the mesh. Not used by `mesh_data` (colors baked) or `geometry_nodes` (colors come through input sockets). |
+| `size_defaults` | Default numeric parameters used when the user omits `size`. **Convention**: `x` = width, `y` = height, `z` = depth, all in **meters**. You can also define custom keys (e.g. `"steps"` for stairs). The user can override any key per-call by passing `size: {"x": 5}`. Not used by `mesh_data` (geometry is baked); for `geometry_nodes` the `size` dict carries input socket values instead. |
 
 > **Vertex colors, not textures.** DedalMCP paints the mesh with colors stored directly on the vertices — there are no image files, no UV maps, no materials. Most engines need a small shader to display them; see the [Vertex Color Shaders](#vertex-color-shaders) section.
 
@@ -763,8 +764,9 @@ Whether you write a `composite` or `script_template` preset, these fields are al
 | A handful of standard primitives (cube, sphere, cylinder, …) placed and joined together | **`composite`** — declarative, no Python, safest |
 | Anything that needs **loops** (e.g. 8 steps in a staircase), **bmesh** (custom vertex displacement), **modifiers** (bevel, mirror), or **randomness** | **`script_template`** — you write the bpy code, with placeholders |
 | A **hand-modeled mesh** with custom vertex positions and colors — anything you can't reach with primitives alone | **`mesh_data`** — raw geometry baked into the JSON, typically produced by the Blender plugin |
+| A **procedural Geometry Nodes tree** authored in Blender that the AI parameterises (scatter, road generators, fractals, anything driven by GN inputs) | **`geometry_nodes`** — invokes a node group from a `.blend` file, AI passes input sockets via `size` |
 
-When in doubt, start with `composite`. If you find yourself unable to express the shape, switch to `script_template`. If you want to model the shape *visually in Blender* and export, use `mesh_data` via the [companion plugin](#blender-plugin-for-visual-preset-editing).
+When in doubt, start with `composite`. If you find yourself unable to express the shape, switch to `script_template`. If you want to model the shape *visually in Blender* and export, use `mesh_data` via the [companion plugin](#blender-plugin-for-visual-preset-editing). If you want **procedural parametric generation** driven by a Geometry Nodes tree, use [`geometry_nodes`](#4e-the-geometry_nodesv1-type).
 
 ---
 
@@ -1019,6 +1021,126 @@ If you have an object that wasn't created via the plugin's "Add" buttons (e.g. y
 
 ---
 
+### 4e. The `geometry_nodes/v1` type
+
+For procedural assets driven by a **Geometry Nodes tree** you authored in Blender. The JSON points to a `.blend` file and a node group inside it, declares which input sockets the AI can drive, and the server appends the tree, sets the inputs, bakes the modifier, exports.
+
+This unlocks the full procedural power of Blender from a single JSON descriptor: scatterers, spline-based road/wall/path generators, fractal trees, tessellators, anything the GN system can model.
+
+#### Where the `.blend` files live
+
+Drop them in one of these directories (DedalMCP searches in order, first match wins):
+
+1. Any directory in the `DEDAL_BLENDS_PATH` environment variable (OS-pathsep separated)
+2. `~/.dedal/blends/` *(recommended for personal trees)*
+3. `./dedal_blends/` next to where you launch the server *(for project-specific trees)*
+
+The JSON references the blend by **basename only** — `"blend": "road.blend"`, no path. Path separators or `..` are rejected at load time. The filename allowlist accepts letters, digits, underscores, dots, and dashes — no spaces.
+
+#### Schema overview
+
+```json
+{
+  "type": "geometry_nodes",
+  "version": 1,
+  "name": "road",
+  "category": "infrastructure",
+  "description": "Procedural road. Inputs: Width, Asphalt, Path (curve), Density (attribute)",
+  "blend": "road.blend",
+  "node_group": "RoadGenerator",
+  "base_geometry": "primitive:empty",
+  "inputs": {
+    "Width":   {"type": "float", "default": 4.0},
+    "Lanes":   {"type": "int",   "default": 2},
+    "Asphalt": {"type": "color", "default": "#3A3A3A"},
+    "Path":    {"type": "curve", "attributes": {"banking": "float"}},
+    "Markers": {"type": "points", "attributes": {"rotation": "vector", "scale": "float"}},
+    "Density": {"type": "attribute", "data_type": "FLOAT", "domain": "POINT", "default": 1.0}
+  }
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `blend` | Filename of the `.blend` file. Basename only. |
+| `node_group` | Name of the Geometry Nodes tree inside the `.blend` (the tree appears in `bpy.data.node_groups`). |
+| `base_geometry` | What hosts the GN modifier: `"primitive:<shape>"` for cube/sphere/cylinder/cone/plane/torus/icosphere/empty, or `"preset:<name>"` to recursively use another preset's output. Default `"primitive:empty"`. |
+| `inputs` | Dict: socket name → spec. Names must match the GN tree's input socket names **exactly** (case-sensitive, spaces preserved). |
+
+#### Input types
+
+**Scalar** — directly fed to the GN socket:
+
+| `type` | AI passes | Notes |
+|---|---|---|
+| `float` | number | `"default": 4.0` |
+| `int` | int | `"default": 2` |
+| `bool` | true/false | `"default": true` |
+| `string` | string | `"default": "main"` |
+| `vector` | `[x, y, z]` | `"default": [10, 10, 0]` |
+| `color` | hex string | `"default": "#3A3A3A"` — converted to RGBA at runtime |
+
+**Array (constructed geometry)** — DedalMCP builds a temporary Curve/Mesh/Point cloud object and plugs it as the socket's Geometry input. Each can declare `attributes` with per-element values (rotation per spline point for road banking, scale per scatter marker, etc.).
+
+| `type` | AI passes | What gets built |
+|---|---|---|
+| `curve` | `{"positions": [...], "tangents": [...], <attr>: [...]}` | Bezier curve object; tangents are optional (auto handles if omitted). |
+| `points` | `{"positions": [...], <attr>: [...]}` | Point cloud (mesh with vertices only). |
+| `mesh` | `{"vertices": [...], "faces": [...], <attr>: [...]}` | Full mesh. |
+
+Per-element attribute declaration in JSON: `"attributes": {"banking": "float", "rotation": "vector"}`. The AI then includes those keys in the payload as arrays the same length as `positions`/`vertices`. Inside the GN tree you read them via a **Named Attribute** node.
+
+**Per-base-geometry attribute** — does NOT construct geometry. Writes a Named Attribute directly on the `base_geometry`. Used when the GN tree reads custom per-vertex/per-face data on its input geometry.
+
+```json
+"Density": {
+  "type": "attribute",
+  "data_type": "FLOAT",
+  "domain": "POINT",
+  "default": 1.0
+}
+```
+
+`data_type` ∈ `FLOAT | INT | BOOLEAN | FLOAT_VECTOR | FLOAT_COLOR | BYTE_COLOR`. `domain` ∈ `POINT | EDGE | FACE | CORNER`. The AI can pass a scalar (broadcast to all elements) or an array.
+
+#### Example invocation
+
+```
+create_mesh {
+  "preset": "road",
+  "name": "test_road",
+  "size": {
+    "Width": 6,
+    "Asphalt": "#2A2A2A",
+    "Path": {
+      "positions": [[0,0,0], [10,0,0], [20,5,0]],
+      "tangents":  [[1,0,0], [1,0,0], [1,1,0]],
+      "banking":   [0, 0, 15]
+    },
+    "Density": [1.0, 2.0, 0.5]
+  }
+}
+```
+
+#### Validation, security, and lifecycle
+
+- **Schema validation at boot**: type fields, input types, hex colors, base_geometry syntax. The blend file itself is *not* opened at boot.
+- **Lazy blend resolution**: missing `.blend` file or wrong `node_group` name surfaces at first invocation with a clear error listing where DedalMCP searched.
+- **Security**: `use_scripts_auto_execute = False` is force-set in the generated script before any `libraries.load`. Auto-running Python inside user `.blend` files is disabled by default.
+- **Modifier baked**: after setting inputs, `bpy.ops.object.modifier_apply()` bakes the result into mesh data. The exported FBX/GLB contains static geometry, not a GN modifier.
+- **Cleanup**: temporary curve/points/mesh objects built for input sockets are removed before export, so they don't end up in the final file.
+
+#### Workflow
+
+1. Open Blender, build a Geometry Nodes tree on a test object, expose the inputs you want to parametrize. Note the **exact** socket names.
+2. Save the .blend to `~/.dedal/blends/<your_name>.blend`.
+3. Write a JSON in `~/.dedal/presets/<your_name>.json` declaring the inputs.
+4. Restart your AI client. Verify with `list_presets`. Call `create_mesh`.
+
+If a socket name in the JSON doesn't exist in the tree, you'll see `GN input socket 'X' not found in node group 'Y'` at invocation. Edit the JSON to match and retry.
+
+---
+
 ### 5. Testing your preset
 
 Once you've written the JSON, **restart your AI client** so the MCP server reloads. Then ask the AI:
@@ -1061,9 +1183,14 @@ Example: `~/.dedal/presets/cube.json` overrides the built-in cube for your entir
 | Symptom | Likely cause |
 |---|---|
 | `Preset 'foo' from /your/path overrides /built-in/path` warning | Your file's `name` matches a built-in. Either rename, or intentionally override. |
-| `Unknown preset type 'xyz' v1. Known: composite/v1, mesh_data/v1, script_template/v1` | Typo in `"type"`, or you meant one of the three known types. |
+| `Unknown preset type 'xyz' v1. Known: composite/v1, geometry_nodes/v1, mesh_data/v1, script_template/v1` | Typo in `"type"`, or you meant one of the four known types. |
 | `mesh_data preset missing required fields: ['faces']` | The `mesh_data` JSON must declare `vertices` AND `faces`. Re-export from the plugin. |
 | `faces[N] index X out of range [0,Y)` | Face indices reference vertices that don't exist. Usually means hand-edited JSON or a corrupted export. |
+| `'blend' must be a bare filename ending in .blend` | A `geometry_nodes` preset declared `"blend": "path/to/file.blend"` or used `..`. Use basename only and put the file in `~/.dedal/blends/`. |
+| `Blend file 'X.blend' not found. Searched: ...` | At invocation, DedalMCP couldn't find the .blend in any blend dir. Copy it to `~/.dedal/blends/` or set `DEDAL_BLENDS_PATH`. |
+| `GN input socket 'X' not found in node group 'Y'` | The JSON declares an input that doesn't exist in the GN tree (rename in JSON or in the tree). |
+| `Node group 'X' not found in Y.blend` | The `node_group` name in the JSON doesn't match any tree inside the .blend. |
+| `Cycle detected in base_geometry: A -> B -> A` | A `geometry_nodes` preset references itself (directly or via chain) through `base_geometry: "preset:..."`. Break the cycle. |
 | `parts[N] unknown shape 'cubed'` | Typo in `shape`. See the shape reference table. |
 | `parts[N] references color zone 'walls' not declared in default_colors` | You wrote `"color": "walls"` but never declared `"walls"` in `default_colors`. Add it. |
 | `Unknown name 'width' in expression 'width/2'` | You used a variable in an expression that isn't in `size_defaults`. Either rename to `x`, or add `"width": 1` to `size_defaults`. |

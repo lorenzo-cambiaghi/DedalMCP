@@ -21,12 +21,49 @@ _BUILTIN_DIR = Path(__file__).parent / "data"
 _USER_HOME_DIR = Path.home() / ".dedal" / "presets"
 _LOCAL_DIR = Path.cwd() / "dedal_presets"
 
+# Blend file discovery (for geometry_nodes/v1)
+_USER_HOME_BLEND_DIR = Path.home() / ".dedal" / "blends"
+_LOCAL_BLEND_DIR = Path.cwd() / "dedal_blends"
 
-def _user_paths_from_env() -> list[Path]:
-    raw = os.environ.get("DEDAL_PRESETS_PATH")
+
+def _paths_from_env(var: str) -> list[Path]:
+    raw = os.environ.get(var)
     if not raw:
         return []
     return [Path(p).expanduser() for p in raw.split(os.pathsep) if p.strip()]
+
+
+def _user_paths_from_env() -> list[Path]:
+    return _paths_from_env("DEDAL_PRESETS_PATH")
+
+
+def blend_search_dirs() -> list[Path]:
+    """Directories to search for .blend files, in order.
+    First match wins (DEDAL_BLENDS_PATH > ~/.dedal/blends/ > ./dedal_blends/)."""
+    dirs: list[Path] = []
+    dirs.extend(_paths_from_env("DEDAL_BLENDS_PATH"))
+    dirs.append(_USER_HOME_BLEND_DIR)
+    dirs.append(_LOCAL_BLEND_DIR)
+    return dirs
+
+
+def resolve_blend_path(filename: str) -> Path:
+    """Find *filename* (basename only) among the blend search directories.
+
+    Raises FileNotFoundError with a clear message listing where we looked.
+    The schema already enforces that *filename* contains no path separators,
+    so this is a pure basename lookup — no traversal risk here.
+    """
+    candidates: list[Path] = []
+    for d in blend_search_dirs():
+        candidate = d / filename
+        candidates.append(candidate)
+        if candidate.is_file():
+            return candidate
+    searched = "\n  ".join(str(c) for c in candidates)
+    raise FileNotFoundError(
+        f"Blend file {filename!r} not found. Searched:\n  {searched}"
+    )
 
 
 def _discover() -> Iterable[tuple[str, Path]]:

@@ -20,7 +20,7 @@ bl_info = {
     "name": "DedalMCP Preset Editor",
     "author": "DedalMCP",
     "version": (1, 0, 0),
-    "blender": (3, 6, 0),
+    "blender": (4, 2, 0),
     "location": "View3D > Sidebar > DedalMCP",
     "description": "Author and re-edit DedalMCP preset JSON files visually",
     "category": "Import-Export",
