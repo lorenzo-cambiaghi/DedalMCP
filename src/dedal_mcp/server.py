@@ -29,17 +29,6 @@ from dedal_mcp.render import (
     list_render_configs,
     build_render_script,
 )
-from dedal_mcp.comfyui import (
-    ComfyError,
-    WorkflowError,
-    load_workflow,
-    inject_inputs,
-    find_output_nodes,
-    submit_prompt,
-    poll_history,
-    upload_image,
-    fetch_output,
-)
 
 app = Server("dedal-mcp")
 
@@ -203,7 +192,7 @@ async def list_tools() -> list[Tool]:
                 "Use a saved render_config from ~/.dedal/renders/ by name, "
                 "or pass an inline config dict. Supports multi-pass output "
                 "(combined, depth, normal, mist, ao, position, object_id) saved as "
-                "separate PNGs — ideal for ControlNet pipelines via comfyui_run_workflow. "
+                "separate PNGs — ideal for ControlNet pipelines (pair with morpheus-mcp for diffusion). "
                 "If config.scene is missing the live RPC Blender session is used."
             ),
             inputSchema={
@@ -228,42 +217,6 @@ async def list_tools() -> list[Tool]:
                 "required": ["config"],
             },
         ),
-        Tool(
-            name="comfyui_run_workflow",
-            description=(
-                "Submit a ComfyUI API-format workflow, inject inputs into nodes "
-                "identified by DEDAL_* titles, wait for completion, download outputs. "
-                "Convention: rename target nodes in ComfyUI before exporting — "
-                "LoadImage→DEDAL_INPUT_IMAGE, CLIPTextEncode→DEDAL_PROMPT, "
-                "KSampler→DEDAL_SEED, SaveImage→DEDAL_OUTPUT. "
-                "Workflows live in ~/.dedal/workflows/ or DEDAL_WORKFLOWS_PATH."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "workflow": {
-                        "description": "Workflow name (from ~/.dedal/workflows/) OR an inline dict",
-                    },
-                    "inputs": {
-                        "type": "object",
-                        "description": "Map of DEDAL_* node title → value (image path, prompt text, seed, …)",
-                    },
-                    "output_dir": {
-                        "type": "string",
-                        "description": "Directory for downloaded outputs (relative to PROJECT_PATH; default comfy_outputs/)",
-                    },
-                    "server": {
-                        "type": "string",
-                        "description": "ComfyUI server URL (default DEDAL_COMFYUI_URL or http://localhost:8188)",
-                    },
-                    "timeout": {
-                        "type": "integer",
-                        "description": "Max seconds to wait for completion (default 1800)",
-                    },
-                },
-                "required": ["workflow"],
-            },
-        ),
     ]
 
 
@@ -286,8 +239,6 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             return _handle_execute_blender_python(arguments)
         elif name == "render_blender_scene":
             return _handle_render_blender_scene(arguments)
-        elif name == "comfyui_run_workflow":
-            return _handle_comfyui_run_workflow(arguments)
         else:
             return [TextContent(type="text", text=f"Unknown tool: {name}")]
     except BlenderError as e:
@@ -296,10 +247,6 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         return [TextContent(type="text", text=f"Blender RPC error: {e}")]
     except RenderConfigError as e:
         return [TextContent(type="text", text=f"Render config error: {e}")]
-    except WorkflowError as e:
-        return [TextContent(type="text", text=f"Workflow error: {e}")]
-    except ComfyError as e:
-        return [TextContent(type="text", text=f"ComfyUI error: {e}")]
     except FileNotFoundError as e:
         return [TextContent(type="text", text=f"File not found: {e}")]
     except Exception as e:
@@ -463,70 +410,6 @@ def _handle_render_blender_scene(args: dict) -> list[TextContent]:
         parts.append(f"\nErrors ({len(errors)}):")
         for e in errors:
             parts.append(f"  {e}")
-    return [TextContent(type="text", text="\n".join(parts))]
-
-
-def _handle_comfyui_run_workflow(args: dict) -> list[TextContent]:
-    server = args.get("server") or os.environ.get("DEDAL_COMFYUI_URL", "http://localhost:8188")
-    timeout = int(args.get("timeout", 1800))
-    wf = load_workflow(args["workflow"])
-
-    # Translate inputs: for image-valued entries, upload the file to ComfyUI first
-    raw_inputs = args.get("inputs", {})
-    prepared: dict[str, object] = {}
-    upload_log: list[str] = []
-    for title, value in raw_inputs.items():
-        # Heuristic: any string value pointing to an existing image file → upload
-        if isinstance(value, str) and os.path.isfile(value) and value.lower().endswith(
-            (".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff", ".bmp")
-        ):
-            uploaded = upload_image(value, server=server)
-            prepared[title] = uploaded
-            upload_log.append(f"  uploaded {value} → {uploaded['name']}")
-        else:
-            prepared[title] = value
-
-    warnings = inject_inputs(wf, prepared)
-
-    output_nodes = find_output_nodes(wf)
-    prompt_id = submit_prompt(wf, server=server)
-    history = poll_history(prompt_id, server=server, timeout=timeout)
-
-    # Download outputs for every output node
-    output_dir = args.get("output_dir", "comfy_outputs/")
-    if not os.path.isabs(output_dir):
-        output_dir = os.path.join(PROJECT_PATH, output_dir)
-    os.makedirs(output_dir, exist_ok=True)
-
-    outputs_by_node = history.get("outputs", {})
-    downloaded: list[str] = []
-    for nid, _node in output_nodes:
-        node_out = outputs_by_node.get(nid, {})
-        images = node_out.get("images", [])
-        for img in images:
-            fn = img.get("filename")
-            sub = img.get("subfolder", "")
-            t = img.get("type", "output")
-            if not fn:
-                continue
-            dest = os.path.join(output_dir, fn)
-            fetch_output(fn, sub, t, dest, server=server)
-            downloaded.append(dest)
-
-    parts = [f"ComfyUI prompt: {prompt_id}", f"Output dir: {output_dir}"]
-    if upload_log:
-        parts.append("\nImage uploads:")
-        parts.extend(upload_log)
-    if downloaded:
-        parts.append(f"\nDownloaded {len(downloaded)} output(s):")
-        for p in downloaded:
-            parts.append(f"  {p}")
-    else:
-        parts.append("\nNo outputs downloaded (no DEDAL_OUTPUT* / SaveImage nodes produced images).")
-    if warnings:
-        parts.append(f"\nWarnings ({len(warnings)}):")
-        for w in warnings:
-            parts.append(f"  {w}")
     return [TextContent(type="text", text="\n".join(parts))]
 
 

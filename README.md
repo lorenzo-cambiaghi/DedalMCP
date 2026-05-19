@@ -130,6 +130,8 @@ Both modes coexist in the same MCP server and can be used in the same session.
 - **Dual Mode**: Use headless mode for fast batch export, live mode for interactive modeling — or mix both in the same session.
 - **Persistent State**: In live mode, variables defined in one `execute_blender_python` call persist to the next. Build complex scenes incrementally.
 
+> **Driving ComfyUI?** Use [**MorpheusMCP**](https://github.com/lorenzo-cambiaghi/MorpheusMCP) alongside DedalMCP. DedalMCP renders the Blender passes (depth, normal, semantic mask, …); MorpheusMCP feeds them as ControlNet inputs to a diffusion workflow.
+
 ---
 
 ## The Perfect Combo: DedalMCP + AkerMCP
@@ -468,14 +470,11 @@ Blender should open, and a sphere should appear in the viewport.
 
 Headless tools accept an optional `engine` parameter to override the default export profile.
 
-### Render + ComfyUI Pipeline
+### Render
 
 | Tool | Description |
 |------|-------------|
-| `render_blender_scene` | Render a `.blend` (or the live RPC session) producing one or more pass images (combined, depth, normal, mist, AO, position, object_id) — perfect inputs for ControlNet. |
-| `comfyui_run_workflow` | Submit a ComfyUI API-format workflow, inject inputs by node title (`DEDAL_INPUT_*`, `DEDAL_PROMPT`, `DEDAL_SEED`), poll for completion, download the outputs locally. |
-
-See [Render + ComfyUI Pipeline](#render--comfyui-pipeline-1) below for the full tutorial.
+| `render_blender_scene` | Render a `.blend` (or the live RPC session) producing one or more pass images (combined, depth, normal, mist, AO, position, object_id) — perfect inputs for ControlNet. Pair with **[MorpheusMCP](https://github.com/lorenzo-cambiaghi/MorpheusMCP)** for diffusion. |
 
 ### When to Use Which
 
@@ -488,7 +487,6 @@ See [Render + ComfyUI Pipeline](#render--comfyui-pipeline-1) below for the full 
 | Inspecting/modifying an existing `.blend` file | `execute_blender_python` | Live |
 | Exporting from a live scene you've been building | `execute_blender_python` | Live |
 | Generating a depth/normal pass for ControlNet | `render_blender_scene` | Headless or Live |
-| Driving a Stable Diffusion workflow with that render | `comfyui_run_workflow` | — |
 
 ---
 
@@ -668,12 +666,9 @@ DedalMCP/
 │   │   │   ├── geometry_nodes.py    Geometry Nodes tree invocation from .blend
 │   │   │   └── safe_eval.py         AST-based expression evaluator (shared)
 │   │   └── data/                  19 built-in preset JSON files (one per preset)
-│   ├── render/
-│   │   ├── config.py              render_config/v1 schema + discovery (~/.dedal/renders/)
-│   │   └── script_builder.py      generates bpy multi-pass render script
-│   └── comfyui/
-│       ├── client.py              stdlib HTTP client (POST workflow, polling, image upload/fetch)
-│       └── workflow.py            workflow loading (~/.dedal/workflows/) + title-based input injection
+│   └── render/
+│       ├── config.py              render_config/v1 schema + discovery (~/.dedal/renders/)
+│       └── script_builder.py      generates bpy multi-pass render script
 └── extras/
     ├── blender_plugin/
     │   └── dedal_preset_editor.py    Blender add-on: visual authoring + JSON round-trip
@@ -1234,167 +1229,6 @@ register_profile(EngineProfile(
 ```
 
 The profile is immediately available via `DEDAL_ENGINE=myengine` or the `engine` parameter on any tool call. No other code changes needed.
-
----
-
-## Render + ComfyUI Pipeline
-
-DedalMCP can drive an end-to-end **Blender render → ComfyUI image generation** pipeline. Typical use case: model a scene (manually in Blender or procedurally via DedalMCP's preset types), render a depth/normal pass, feed it into a ComfyUI workflow that uses ControlNet to generate the final image.
-
-The AI orchestrates three steps:
-
-```
-1. (optional) create_mesh / start_blender / execute_blender_python    ← build scene
-2. render_blender_scene config=watchtower_depth                       ← render N passes
-3. comfyui_run_workflow workflow=depth_to_concept                     ← ComfyUI diffuses
-```
-
-### Where files live
-
-| What | Default location | Env var |
-|------|------------------|---------|
-| `.blend` scene files | `~/.dedal/blends/` | `DEDAL_BLENDS_PATH` |
-| Render configs (`render_config/v1` JSON) | `~/.dedal/renders/` | `DEDAL_RENDERS_PATH` |
-| ComfyUI workflows (API format JSON) | `~/.dedal/workflows/` | `DEDAL_WORKFLOWS_PATH` |
-| ComfyUI server URL | `http://localhost:8188` | `DEDAL_COMFYUI_URL` |
-
-Env vars accept multiple directories separated by `:` (`;` on Windows).
-
-### 1. Author a render config
-
-A `render_config/v1` JSON tells DedalMCP which Blender scene to render, what passes to produce, and any overrides on the scene's render settings. Drop it in `~/.dedal/renders/watchtower_depth.json`:
-
-```json
-{
-  "type": "render_config",
-  "version": 1,
-  "name": "watchtower_depth",
-  "description": "Multi-pass for ControlNet depth+normal workflows",
-  "scene": "watchtower.blend",
-  "camera": "Camera_Main",
-  "resolution": [1024, 1024],
-  "samples": 64,
-  "engine": "CYCLES",
-  "denoise": true,
-  "passes": ["combined", "depth", "normal"],
-  "output_dir": "renders/",
-  "frame": 1
-}
-```
-
-| Field | Meaning |
-|---|---|
-| `scene` | Basename of a `.blend` file in `~/.dedal/blends/` (basename only, no path traversal). **Omit to use the current live RPC Blender session.** |
-| `camera` | Optional. Name of a camera object in the scene. Default: scene's active camera. |
-| `resolution`, `samples`, `engine`, `denoise`, `frame` | Optional. Override the scene's saved render settings. Omit → use whatever the .blend has. |
-| `passes` | Subset of `combined`, `depth`, `normal`, `mist`, `ao`, `position`, `object_id`. Each becomes a separate PNG. |
-| `output_dir` | Where to write the rendered PNGs (relative to `PROJECT_PATH`). Default `renders/`. |
-
-> **About passes**: `depth` is automatically normalized (Cycles outputs world-unit Z values; the compositor's Normalize node maps them to 0–1 for direct use as a ControlNet depth map). `mist` requires the scene's World to have its mist settings enabled — DedalMCP turns on `world.mist_settings.use_mist`, but the world still needs a mist start/depth. `edges` (freestyle) is not auto-set up — declare it only if your scene's view layer already has freestyle configured.
-
-### 2. Run a render
-
-```
-→ render_blender_scene {
-    "config": "watchtower_depth",
-    "name_prefix": "shot_001",
-    "overrides": {"samples": 128}
-  }
-
-← Render mode: headless (watchtower.blend)
-  Output dir: /Users/me/UnityProj/renders
-  
-  Rendered 3 pass(es):
-    /Users/me/UnityProj/renders/shot_001_combined_0001.png (842310 bytes)
-    /Users/me/UnityProj/renders/shot_001_depth_0001.png (124012 bytes)
-    /Users/me/UnityProj/renders/shot_001_normal_0001.png (520088 bytes)
-```
-
-The frame number suffix (`_0001`) comes from Blender's File Output node convention.
-
-### 3. Prepare a ComfyUI workflow
-
-Open your workflow in ComfyUI, **rename the nodes you want DedalMCP to drive** (right-click → Properties → Title):
-
-| Node class | Rename to | Field it controls |
-|---|---|---|
-| `LoadImage` | `DEDAL_INPUT_IMAGE` (or `DEDAL_INPUT_DEPTH`, `DEDAL_INPUT_NORMAL`, …) | `image` |
-| `CLIPTextEncode` (positive) | `DEDAL_PROMPT` | `text` |
-| `CLIPTextEncode` (negative) | `DEDAL_PROMPT_NEGATIVE` | `text` |
-| `KSampler` | `DEDAL_SEED` | `seed` |
-| `SaveImage` | `DEDAL_OUTPUT` (or `DEDAL_OUTPUT_*`) | (output path) |
-
-Then export with **Workflow > Export (API Format)** — this produces a `.json` with `class_type`/`inputs`/`_meta` per node, not the visual graph format. Drop it in `~/.dedal/workflows/depth_to_concept.json`.
-
-> ComfyUI's *Save (API Format)* / *Export (API Format)* option must be on (Settings → Enable Dev mode Options). The "normal" Save button produces a UI-format JSON which `comfyui_run_workflow` will reject with a clear error.
-
-### 4. Run the ComfyUI workflow
-
-```
-→ comfyui_run_workflow {
-    "workflow": "depth_to_concept",
-    "inputs": {
-      "DEDAL_INPUT_IMAGE": "renders/shot_001_depth_0001.png",
-      "DEDAL_PROMPT": "medieval watchtower at sunset, dramatic lighting, painterly",
-      "DEDAL_SEED": 42
-    },
-    "output_dir": "comfy_outputs/"
-  }
-
-← ComfyUI prompt: abc123-def-456
-  Output dir: /Users/me/UnityProj/comfy_outputs
-  
-  Image uploads:
-    uploaded /Users/me/UnityProj/renders/shot_001_depth_0001.png → shot_001_depth_0001.png
-  
-  Downloaded 1 output(s):
-    /Users/me/UnityProj/comfy_outputs/ComfyUI_00042_.png
-```
-
-DedalMCP handles automatically:
-- **Image upload**: any input value that's an existing image file path (`.png/.jpg/.webp/.tif/.bmp`) is uploaded to ComfyUI via `/upload/image` before being injected.
-- **Polling**: blocks until the workflow completes (default 1800s timeout), polling `/history/{prompt_id}` once per second.
-- **Output download**: for each `DEDAL_OUTPUT*` (or any `SaveImage`) node, fetches the produced images via `/view` into `output_dir`.
-
-### 5. Live mode (rendering the current Blender session)
-
-If you've been building a scene interactively with `start_blender` + `execute_blender_python`, you can render that **live session** without saving to a .blend: just omit `scene` from the render config.
-
-```
-→ start_blender {}
-→ execute_blender_python {"script": "..."}        ← build the scene
-→ render_blender_scene {
-    "config": {
-      "type": "render_config", "version": 1, "name": "quick",
-      "passes": ["combined", "depth"],
-      "resolution": [512, 512]
-    }
-  }
-
-← Render mode: live RPC
-  ...
-```
-
-`config` accepts an inline dict instead of a name lookup — useful for one-off renders.
-
-### Common gotchas
-
-| Symptom | Likely cause |
-|---|---|
-| `Cannot reach ComfyUI at http://localhost:8188` | ComfyUI server isn't running, or wrong port. Set `DEDAL_COMFYUI_URL` or pass `server` per-call. |
-| `node ... doesn't look like an API-format workflow` | The exported workflow JSON is in UI format. Re-export with **Export (API Format)** after enabling Dev Mode. |
-| `No node found with title 'DEDAL_X'` | You haven't renamed the target node in ComfyUI. Right-click → Properties → Title. |
-| `'scene' must be a bare .blend filename` | Render config used a path or `..`. Use basename only and put the file in `~/.dedal/blends/`. |
-| `Blend file 'X.blend' not found. Searched: ...` | Scene missing from any blend dir. Copy it or set `DEDAL_BLENDS_PATH`. |
-| Render is empty / black | Camera not set, or the live RPC session has no scene content. Check `scene.camera` and that visible objects exist. |
-| `Workflow ... did not complete within Ns` | ComfyUI is still running (server might be loading large checkpoints). Increase `timeout` or check ComfyUI logs. |
-
-### Out of scope (future work)
-
-- Multi-frame animation rendering (only single frame for now)
-- Caching of identical (workflow + inputs) combinations
-- Streaming progress events during long renders or ComfyUI runs
-- Auto-detection of input nodes by class type (currently title-based only)
 
 ---
 

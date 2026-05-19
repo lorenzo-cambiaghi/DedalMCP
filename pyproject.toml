@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dedal-mcp"
-version = "0.1.0"
+version = "0.2.0"
 description = "MCP server for generating placeholder meshes via Blender CLI"
 requires-python = ">=3.9"
 dependencies = [
