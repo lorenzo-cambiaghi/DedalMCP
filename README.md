@@ -616,7 +616,7 @@ LLM (Claude, Cursor, Copilot, Antigravity)
     ▼
 ┌───────────────────────────────────┐
 │         DedalMCP Server           │  Python MCP server
-│   8 tools, 19 presets             │
+│   7 tools, 19 presets             │
 │   6 engine profiles               │
 │                                   │
 │  ┌─────────────┐ ┌─────────────┐ │
@@ -650,7 +650,7 @@ LLM (Claude, Cursor, Copilot, Antigravity)
 DedalMCP/
 ├── pyproject.toml
 ├── src/dedal_mcp/
-│   ├── server.py                  MCP server — 8 tools, routing only
+│   ├── server.py                  MCP server — 7 tools, routing only
 │   ├── blender_runner.py          Headless: subprocess blender --background --python
 │   ├── blender_rpc.py             Injected into Blender: TCP server + main thread dispatcher
 │   ├── blender_rpc_client.py      Live: TCP client, launch_blender(), execute_python()
