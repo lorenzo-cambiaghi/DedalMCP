@@ -4,12 +4,48 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dedal-mcp"
-version = "0.2.0"
-description = "MCP server for generating placeholder meshes via Blender CLI"
-requires-python = ">=3.9"
+version = "0.3.0"
+description = "MCP server that lets AI assistants drive Blender — headless placeholder mesh generation for Unity/Godot/Unreal, plus live GUI scripting via RPC"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Lorenzo Cambiaghi" },
+]
+keywords = [
+    "mcp",
+    "model-context-protocol",
+    "blender",
+    "gamedev",
+    "unity",
+    "godot",
+    "unreal",
+    "placeholder",
+    "mesh",
+    "3d",
+    "ai",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Multimedia :: Graphics :: 3D Modeling",
+    "Topic :: Software Development :: Libraries",
+]
+requires-python = ">=3.10"
 dependencies = [
     "mcp>=1.0.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/lorenzo-cambiaghi/DedalMCP"
+Repository = "https://github.com/lorenzo-cambiaghi/DedalMCP"
+Issues = "https://github.com/lorenzo-cambiaghi/DedalMCP/issues"
 
 [project.scripts]
 dedal-mcp = "dedal_mcp.server:main"

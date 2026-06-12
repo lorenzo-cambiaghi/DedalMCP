@@ -1,6 +1,8 @@
-from __future__ import annotations
 """DedalMCP — MCP server for placeholder mesh generation via Blender."""
 
+from __future__ import annotations
+
+import asyncio
 import os
 from typing import Any
 
@@ -8,7 +10,7 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
-from dedal_mcp.blender_runner import run_script, run_render, BlenderError
+from dedal_mcp.blender_runner import run_script, run_render, BlenderError, DEFAULT_TIMEOUT
 from dedal_mcp.blender_rpc_client import (
     launch_blender,
     execute_python,
@@ -224,21 +226,24 @@ async def list_tools() -> list[Tool]:
 
 @app.call_tool()
 async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
+    # Handlers run Blender subprocesses / blocking sockets, so they are
+    # dispatched to a worker thread to keep the MCP event loop responsive
+    # (pings, cancellations) during long renders.
     try:
         if name == "list_presets":
             return _handle_list_presets()
         elif name == "create_mesh":
-            return _handle_create_mesh(arguments)
+            return await asyncio.to_thread(_handle_create_mesh, arguments)
         elif name == "create_from_script":
-            return _handle_create_from_script(arguments)
+            return await asyncio.to_thread(_handle_create_from_script, arguments)
         elif name == "batch_create":
-            return _handle_batch_create(arguments)
+            return await asyncio.to_thread(_handle_batch_create, arguments)
         elif name == "start_blender":
-            return _handle_start_blender()
+            return await asyncio.to_thread(_handle_start_blender)
         elif name == "execute_blender_python":
-            return _handle_execute_blender_python(arguments)
+            return await asyncio.to_thread(_handle_execute_blender_python, arguments)
         elif name == "render_blender_scene":
-            return _handle_render_blender_scene(arguments)
+            return await asyncio.to_thread(_handle_render_blender_scene, arguments)
         else:
             return [TextContent(type="text", text=f"Unknown tool: {name}")]
     except BlenderError as e:
@@ -330,7 +335,7 @@ def _handle_batch_create(args: dict) -> list[TextContent]:
     os.makedirs(output_dir, exist_ok=True)
 
     script = build_batch_script(meshes, output_dir, fmt, profile)
-    result = run_script(script, timeout=120)
+    result = run_script(script, timeout=DEFAULT_TIMEOUT * 2)
     return [TextContent(type="text", text=result)]
 
 
@@ -416,8 +421,6 @@ def _handle_render_blender_scene(args: dict) -> list[TextContent]:
 # ── Entry point ──────────────────────────────────────────────────────
 
 def main():
-    import asyncio
-
     async def run():
         async with stdio_server() as (read_stream, write_stream):
             await app.run(read_stream, write_stream, app.create_initialization_options())

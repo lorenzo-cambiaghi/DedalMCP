@@ -1,5 +1,6 @@
-from __future__ import annotations
 """Builds complete bpy scripts from preset + parameters."""
+
+from __future__ import annotations
 
 import os
 

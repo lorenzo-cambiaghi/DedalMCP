@@ -1,5 +1,6 @@
-from __future__ import annotations
 """Engine-specific export profiles. Add new engines here."""
+
+from __future__ import annotations
 
 import os
 from typing import Dict
@@ -31,14 +32,16 @@ class EngineProfile:
             f"{k}={repr(v)}" for k, v in self.fbx_extra_args.items()
         )
         extra_str = f",\n    {extra}" if extra else ""
+        # name/output_path are caller-supplied (ultimately from the AI):
+        # embed via repr() so quotes/backslashes can't break the script.
         return f"""
 bpy.ops.object.select_all(action='DESELECT')
-obj = bpy.data.objects["{name}"]
+obj = bpy.data.objects[{name!r}]
 obj.select_set(True)
 bpy.context.view_layer.objects.active = obj
 
 bpy.ops.export_scene.fbx(
-    filepath=r"{output_path}",
+    filepath={output_path!r},
     use_selection=True,
     apply_scale_options='{self.scale_option}',
     axis_forward='{self.axis_forward}',
@@ -49,24 +52,24 @@ bpy.ops.export_scene.fbx(
     add_leaf_bones=False,
     bake_anim=False{extra_str},
 )
-print("DEDAL_EXPORT_SUCCESS:" + r"{output_path}")
+print("DEDAL_EXPORT_SUCCESS:" + {output_path!r})
 """
 
     def get_glb_export_code(self, name: str, output_path: str) -> str:
         return f"""
 bpy.ops.object.select_all(action='DESELECT')
-obj = bpy.data.objects["{name}"]
+obj = bpy.data.objects[{name!r}]
 obj.select_set(True)
 bpy.context.view_layer.objects.active = obj
 
 bpy.ops.export_scene.gltf(
-    filepath=r"{output_path}",
+    filepath={output_path!r},
     use_selection=True,
     export_format='GLB',
     export_colors=True,
     export_apply=True,
 )
-print("DEDAL_EXPORT_SUCCESS:" + r"{output_path}")
+print("DEDAL_EXPORT_SUCCESS:" + {output_path!r})
 """
 
     def get_export_code(self, name: str, output_path: str, fmt: str = "fbx") -> str:

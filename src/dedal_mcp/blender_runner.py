@@ -9,12 +9,18 @@ import tempfile
 
 BLENDER_PATH = os.environ.get("BLENDER_PATH", "blender")
 
+# Cold Blender starts (first launch, addon caches) can exceed 60s on slow
+# machines — overridable without code changes.
+DEFAULT_TIMEOUT = int(os.environ.get("DEDAL_BLENDER_TIMEOUT", "120"))
+
 
 class BlenderError(Exception):
     pass
 
 
-def run_script(script: str, timeout: int = 60) -> str:
+def run_script(script: str, timeout: int | None = None) -> str:
+    if timeout is None:
+        timeout = DEFAULT_TIMEOUT
     with tempfile.NamedTemporaryFile(
         suffix=".py", mode="w", delete=False, prefix="dedal_"
     ) as f:
